@@ -1,0 +1,6 @@
+/.env
+/.oa2p.d
+/.profile.d
+/supervise
+/datomic-pro
+/run

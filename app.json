@@ -1,0 +1,29 @@
+{
+    "name": "Datomic Console Service",
+    "repository": "https://github.com/upworthy/datomic-peer-svc",
+    "success_url": "/browse",
+    "env": {
+        "AWS_ACCESS_KEY_ID":         {"description": "An AWS access key for storage system access."},
+        "AWS_SECRET_ACCESS_KEY":     {"description": "An AWS secret key for storage system access."},
+        "DATOMIC_STORAGE_SPECS":     {"description": "One or more Datomic storage alias/URI pairs, space separated."},
+        "DATOMIC_TECH_CONTACT":      {"description": "An email associated with My Datomic account."},
+        "DATOMIC_DOWNLOAD_KEY":      {"description": "A secret key that, along with the email, is used to download Datomic software."},
+        "DATOMIC_VERSION":           {"description": "Datomic software version."},
+        "DATOMIC_MAIN_NS":           {"description": "A peer service to start, either 'datomic.console' or 'datomic.rest'",
+                                      "value":       "datomic.console"},
+        "OA2P_COOKIE_SECRET":        {"description": "A secret seed string for secure cookies (must be a 32-byte string)."},
+        "OA2P_COOKIE_NAME":          {"description": "A cookie name.",
+                                      "value":       "__oa2p",
+                                      "required":    false},
+        "OA2P_EMAIL_DOMAIN":         {"description": "Users with emails in this domain are authorized.",
+                                      "required":    false},
+        "OA2P_AUTHORIZED_EMAILS":    {"description": "A whitelist of authorized emails, space separated.",
+                                      "required":    false},
+        "OA2P_GOOGLE_CLIENT_ID":     {"description": "A client ID for Google authentication."},
+        "OA2P_GOOGLE_CLIENT_SECRET": {"description": "A client secret for Google authentication."}
+    },
+    "buildpacks": [
+        {"url": "https://github.com/kr/heroku-buildpack-inline.git"},
+        {"url": "https://github.com/upworthy/oauth2-proxy-buildpack.git"}
+    ]
+}

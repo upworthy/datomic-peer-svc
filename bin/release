@@ -1,0 +1,3 @@
+#!/bin/bash
+# usage: bin/release <build-dir>
+echo "--- {}"

@@ -1,0 +1,163 @@
+#!/bin/bash
+# usage: bin/compile <build-dir> <cache-dir> <env-dir>
+
+set -e -o pipefail
+
+# sed -l basically makes sed replace and buffer through stdin to
+# stdout so you get updates while the command runs and don't wait for
+# the end.
+# e.g. npm install | indent
+# lifted from: https://github.com/heroku/heroku-buildpack-jvm-common
+indent() {
+  # if an arg is given it's a flag indicating we shouldn't indent the
+  # first line, so use :+ to tell SED accordingly if that parameter is
+  # set, otherwise null string for no range selector prefix (it
+  # selects from line 2 onwards and then every 1st line, meaning all
+  # lines)
+  c="${1:+"2,999"} s/^/       /"
+  case $(uname) in
+    Darwin) sed -l "$c";; # mac/bsd sed: -l buffers on line boundaries
+    *)      sed -u "$c";; # unix/gnu sed: -u unbuffered (arbitrary) chunks of data
+  esac
+}
+
+this_dir=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
+
+mkdir -p "$1" "$2"
+build=$(cd "$1/" && pwd)
+cache=$(cd "$2/" && pwd)
+env_dir="$3"
+
+DATOMIC_TECH_CONTACT=$(cat "$env_dir/DATOMIC_TECH_CONTACT")
+DATOMIC_DOWNLOAD_KEY=$(cat "$env_dir/DATOMIC_DOWNLOAD_KEY")
+DATOMIC_VERSION=$(cat "$env_dir/DATOMIC_VERSION")
+
+if [[ -f $cache/datomic-pro-$DATOMIC_VERSION.zip ]]
+then
+    echo "-----> Using Datomic Pro $DATOMIC_VERSION"
+else
+    rm -f $cache/datomic-pro-*.zip # keep the cache clean!
+    echo -n "-----> Downloading Datomic Pro $DATOMIC_VERSION..."
+    curl -Lso $cache/datomic-pro-$DATOMIC_VERSION.zip \
+         --user "$DATOMIC_TECH_CONTACT:$DATOMIC_DOWNLOAD_KEY" \
+         "https://my.datomic.com/repo/com/datomic/datomic-pro/$DATOMIC_VERSION/datomic-pro-$DATOMIC_VERSION.zip"
+    echo " done"
+fi
+
+if [[ -d "$build/datomic-pro" ]]; then
+    echo "This app already has 'datomic-pro' directory. Can't proceed!" | indent
+    exit 1
+fi
+unzip -q -d $build $cache/datomic-pro-$DATOMIC_VERSION.zip | indent
+mv $build/datomic-pro-$DATOMIC_VERSION $build/datomic-pro
+
+echo "-----> Applying patches to Datomic Pro"
+cat <<"EOF" | patch -d $build/datomic-pro -N -p1 | indent
+diff --git a/bin/logback.xml b/bin/logback.xml
+index 67796b4..5e38777 100644
+--- a/bin/logback.xml
++++ b/bin/logback.xml
+@@ -5,14 +5,9 @@
+     <resetJUL>true</resetJUL>
+   </contextListener>
+ 
+-  <appender name="MAIN" class="ch.qos.logback.core.rolling.RollingFileAppender">
+-    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+-      <fileNamePattern>${DATOMIC_LOG_DIR:-log}/%d{yyyy-MM-dd}.log</fileNamePattern>
+-      <maxHistory>72</maxHistory> 
+-    </rollingPolicy>
+-    <prudent>true</prudent> <!-- multi jvm safe, slower -->
++  <appender name="MAIN" class="ch.qos.logback.core.ConsoleAppender">
+     <encoder>
+-      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %-10contextName %logger{36} - %msg%n</pattern>
++      <pattern>%-5level %-10contextName %logger{36} - %msg%n</pattern>
+     </encoder>
+   </appender>
+ 
+EOF
+
+echo "-----> Generating 'run' script"
+if [[ -f "$build/run" ]]; then
+    echo "This app already has 'run' script. Can't proceed!" | indent
+    exit 1
+fi
+cat <<"EOF" > "$build/run"
+#!/bin/bash
+
+cd datomic-pro
+
+main_ns=${DATOMIC_MAIN_NS:-datomic.rest}
+cp_opt="$(bin/classpath)"
+
+if [[ $main_ns == datomic.console ]]; then
+    cp_opt="lib/console/*:$cp_opt"
+fi
+
+cmd="java $DATOMIC_MEM_OPTS -Dfile.encoding=UTF-8 -server -cp $cp_opt clojure.main -i bin/bridge.clj --main $main_ns -p $PORT $DATOMIC_STORAGE_SPECS"
+echo "datomic-peer: launching: $cmd"
+exec $cmd
+EOF
+chmod +x "$build/run"
+
+echo "-----> Generating .profile.d/datomic-peer.sh"
+mkdir -p "$build/.profile.d"
+
+if [[ "$this_dir" == "$build/bin" ]]; then
+    # Running in "inline" mode, which means we're installing Datomic
+    # Peer as a standalone app.
+    cat <<"EOF" > "$build/.profile.d/datomic-peer.sh"
+if [[ -z $DATOMIC_MEM_OPTS ]]; then
+    case $(ulimit -u) in
+        256)   # 1X Dyno
+            export DATOMIC_MEM_OPTS="-Xmx384m -Xss512k"
+            ;;
+        512)   # 2X Dyno
+            export DATOMIC_MEM_OPTS="-Xmx768m"
+            ;;
+        16384) # PX-M Dyno
+            export DATOMIC_MEM_OPTS="-Xmx2g"
+            ;;
+        32768) # PX-L Dyno
+            export DATOMIC_MEM_OPTS="-Xmx12g"
+            ;;
+        *)
+            export DATOMIC_MEM_OPTS="-Xmx384m -Xss512k"
+            ;;
+    esac
+fi
+EOF
+else
+    # "Normal" mode: we're installing Datomic Peer as a subprocess
+    # that exposes Datomic REST API locally on port 8777 (overridable
+    # by DATOMIC_REST_PORT).
+cat <<"EOF" > "$build/.profile.d/datomic-peer.sh"
+if [[ -z $DATOMIC_MEM_OPTS ]]; then
+    case $(ulimit -u) in
+        256)   # 1X Dyno
+            export DATOMIC_MEM_OPTS="-Ddatomic.objectCacheMax=100m -Xmx256m -Xss512k"
+            ;;
+        512)   # 2X Dyno
+            export DATOMIC_MEM_OPTS="-Ddatomic.objectCacheMax=130m -Xmx384m"
+            ;;
+        16384) # PX-M Dyno
+            export DATOMIC_MEM_OPTS="-Ddatomic.objectCacheMax=300m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
+            ;;
+        32768) # PX-L Dyno
+            export DATOMIC_MEM_OPTS="-Ddatomic.objectCacheMax=800m -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
+            ;;
+        *)
+            export DATOMIC_MEM_OPTS="-Ddatomic.objectCacheMax=100m -Xmx256m -Xss512k"
+            ;;
+    esac
+fi
+
+# Start the local REST API service & ensure it's running:
+rest_port=${DATOMIC_REST_PORT:-8777}
+rest_url="http://localhost:$rest_port"
+PORT=$rest_port supervise $(pwd) &
+while [[ -n $(curl -so /dev/null $rest_url || echo "NO") ]]; do
+    echo "datomic-peer: waiting for \"$rest_url\" to start..."
+    sleep 3
+done
+EOF
+fi

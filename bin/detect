@@ -1,0 +1,3 @@
+#!/bin/bash
+# usage: bin/detect <build-dir>
+echo "Datomic Pro Installer"
