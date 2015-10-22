@@ -1,1 +1,1 @@
-web: oa2p
+web: oa2p ./run-peer

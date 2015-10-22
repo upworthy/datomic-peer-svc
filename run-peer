@@ -1,0 +1,14 @@
+#!/bin/bash
+
+cd datomic-pro
+
+main_ns=${DATOMIC_MAIN_NS:-datomic.rest}
+cp_opt="$(bin/classpath)"
+
+if [[ $main_ns == datomic.console ]]; then
+    cp_opt="lib/console/*:$cp_opt"
+fi
+
+cmd="java $DATOMIC_MEM_OPTS -Dfile.encoding=UTF-8 -server -cp $cp_opt clojure.main -i bin/bridge.clj --main $main_ns -p $PORT $DATOMIC_STORAGE_SPECS"
+echo "datomic-peer: launching: $cmd"
+exec $cmd

@@ -1,6 +1,7 @@
 /.env
+/.datomic-peer.d
 /.oa2p.d
 /.profile.d
-/supervise
 /datomic-pro
-/run
+/test/c
+/test/e

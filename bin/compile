@@ -76,29 +76,6 @@ index 67796b4..5e38777 100644
  
 EOF
 
-echo "-----> Generating 'run' script"
-if [[ -f "$build/run" ]]; then
-    echo "This app already has 'run' script. Can't proceed!" | indent
-    exit 1
-fi
-cat <<"EOF" > "$build/run"
-#!/bin/bash
-
-cd datomic-pro
-
-main_ns=${DATOMIC_MAIN_NS:-datomic.rest}
-cp_opt="$(bin/classpath)"
-
-if [[ $main_ns == datomic.console ]]; then
-    cp_opt="lib/console/*:$cp_opt"
-fi
-
-cmd="java $DATOMIC_MEM_OPTS -Dfile.encoding=UTF-8 -server -cp $cp_opt clojure.main -i bin/bridge.clj --main $main_ns -p $PORT $DATOMIC_STORAGE_SPECS"
-echo "datomic-peer: launching: $cmd"
-exec $cmd
-EOF
-chmod +x "$build/run"
-
 echo "-----> Generating .profile.d/datomic-peer.sh"
 mkdir -p "$build/.profile.d"
 
@@ -130,7 +107,9 @@ else
     # "Normal" mode: we're installing Datomic Peer as a subprocess
     # that exposes Datomic REST API locally on port 8777 (overridable
     # by DATOMIC_REST_PORT).
-cat <<"EOF" > "$build/.profile.d/datomic-peer.sh"
+    mkdir -p "$build/.datomic-peer.d"
+    cp "$this_dir/../run-peer" "$build/.datomic-peer.d/"
+    cat <<"EOF" > "$build/.profile.d/datomic-peer.sh"
 if [[ -z $DATOMIC_MEM_OPTS ]]; then
     case $(ulimit -u) in
         256)   # 1X Dyno
@@ -152,9 +131,27 @@ if [[ -z $DATOMIC_MEM_OPTS ]]; then
 fi
 
 # Start the local REST API service & ensure it's running:
+
+app_dir=$(pwd)
+if [[ $(uname) != Darwin ]]; then
+    # On a real dyno, $HOME points at the app directory
+    app_dir=$HOME
+fi
+
+svc_dir="$app_dir/.datomic-peer.d/peer-svc"
+mkdir -p "$svc_dir"
+
+cat <<EAGLE > "$svc_dir/run"
+#!/bin/bash
+cd "$app_dir"
+exec .datomic-peer.d/run-peer
+EAGLE
+
+chmod +x "$svc_dir/run"
+
 rest_port=${DATOMIC_REST_PORT:-8777}
 rest_url="http://localhost:$rest_port"
-PORT=$rest_port supervise $(pwd) &
+PORT=$rest_port supervise "$svc_dir" &
 while [[ -n $(curl -so /dev/null $rest_url || echo "NO") ]]; do
     echo "datomic-peer: waiting for \"$rest_url\" to start..."
     sleep 3
