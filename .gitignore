@@ -3,5 +3,6 @@
 /.oa2p.d
 /.profile.d
 /datomic-pro
+/datomic-peer.log
 /test/c
 /test/e

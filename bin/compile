@@ -144,7 +144,13 @@ mkdir -p "$svc_dir"
 cat <<EAGLE > "$svc_dir/run"
 #!/bin/bash
 cd "$app_dir"
-exec .datomic-peer.d/run-peer
+if [[ "\$DYNO" == *run.* ]]; then
+    # On a one-off dyno, capture peer's logging to datomic-peer.log to keep user's tty tidy
+    exec 2>&1 # send stderr to stdout
+    exec .datomic-peer.d/run-peer > datomic-peer.log
+else
+    exec .datomic-peer.d/run-peer
+fi
 EAGLE
 
 chmod +x "$svc_dir/run"
