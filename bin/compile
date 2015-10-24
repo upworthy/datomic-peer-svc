@@ -146,6 +146,7 @@ cat <<EAGLE > "$svc_dir/run"
 cd "$app_dir"
 if [[ "\$DYNO" == *run.* ]]; then
     # On a one-off dyno, capture peer's logging to datomic-peer.log to keep user's tty tidy
+    echo "Datomic Peer log output will be stored in: $app_dir/datomic-peer.log"
     exec 2>&1 # send stderr to stdout
     exec .datomic-peer.d/run-peer > datomic-peer.log
 else
