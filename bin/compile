@@ -159,7 +159,7 @@ rest_port=${DATOMIC_REST_PORT:-8777}
 rest_url="http://localhost:$rest_port"
 PORT=$rest_port supervise "$svc_dir" &
 while [[ -n $(curl -so /dev/null $rest_url || echo "NO") ]]; do
-    echo "datomic-peer: waiting for \"$rest_url\" to start..."
+    echo "Waiting for \"$rest_url\" to start..."
     sleep 3
 done
 EOF
